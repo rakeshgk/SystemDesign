@@ -153,3 +153,11 @@ In many interviews, using REST both for internal and external APIs is fine and y
 
 ### Server Sent Events (SSE) : Real-time Push Communication
 
+SSE is a nice hack on top of HTTP that allows a server to stream many messages, over time, in a single response from the server. With most HTTP APIs you'd get a single, cohesive JSON blob as a response from the server that is processed once the whole thing has been received. Since we have to wait for the whole response to come in before we can process it, it's not much good for push notifications! On the other hand, with SSE, the server can push many messages as "chunks" in a single response from the server. Clients can then process each message as it comes in. It's still one big HTTP response (same TCP connection), but it comes in over many smaller packets and clients are expected to process each line of the body individually to allow them to react to the data as it comes in.
+
+We can't keep an SSE connection open for too long because the server (or the load balancer, or a middle box proxy) will close down the connection. So the SSE standard defines the behavior of an `EventSource` object that, once the connection is closed, will automatically reconnect with the ID of the last message received. Servers are expected to keep track of prior messages that may have been missed while the client was disconnected and resend them.
+
+Use this pattern in system design inteviews where you want clients to get notifications or events as soon as they happen. For example - Real-time online bidding. 
+
+### WebSockets: Real-Time Bidirectional Communication
+
