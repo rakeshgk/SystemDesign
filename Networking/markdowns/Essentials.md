@@ -183,3 +183,44 @@ WebRTC enables direct peer-to-peer communication between browsers without requir
 With WebRTC, clients talk to a central "signaling server" which keeps track of which peers are available together with their connection information. Once a client has the connection information for another peer, they can try to establish a direct connection without going through any intermediary servers.
 
 WebRTC is ideal for audio/video calling and conferencing applications. It can also occasionally be appropriate for collaborative applications like document editors, especially if they need to scale to many clients. In practice, most collaborative editors don't require scaling to thousands of clients. Additionally, you often need a central server anyways to store the document and coordinate between clients. 
+
+## Load Balancing 
+
+We need to spread the incoming requests (load) by deciding which server should handle each request. There's two ways to handle load balancing: on the client side or on the server side. 
+
+### Client-side Load Balancing 
+
+With client-side load balancing, the client itself decides which server to talk to. Usually this involves the client making a request to a service registry or directory which contains the list of available servers. Then the client makes a request to one of those servers directly. The client will need to periodically poll or be pushed updates when things change.
+
+Client-side load balancing can be very fast and efficient. Since the client is making the decision, it can choose the fastest server without any additional latency. Instead of using a full network hop to get routed to the right server on every request, we only need to (periodically) sync our list of servers with the server registry.
+
+Client-side load balancing can work great in two different scenarios: either
+
+1. We have a small number of clients that we control, (e.g. the Redis Cluster client, or gRPC's client-side load balancing for internal services) or
+2. We have a large number of clients but we can tolerate slow updates (e.g. DNS).
+
+### Dedicated Load Balancer 
+
+We may not want our clients to have to refresh their list of servers or even know about the existence of multiple servers on the backend. Or we might have a large number of clients that we don't control but need to retrieve updates quickly. In these cases, we'll use a dedicated load balancer: a server or hardware device that sits between the client and the backend servers and makes decisions about which server to send the request to.
+
+Having a dedicated load balancer implies an additional hop in each request: first to the load balancer, then to the server which needs to serve the request. But in exchange we get very fast updates to our list of servers and fine-grained control over how we route requests.
+
+Load balancers can operate at different layers of the protocol stack and which you choose will depend, in part, on what your application needs.
+
+1. Layer 4 Load Balancer
+   - Layer 4 load balancers operate at the transport layer (TCP/UDP).
+   - They make routing decisions based on network information like IP addresses and ports, without looking at the actual content of the packets.
+   - Maintain persistent TCP connections between client and server.
+   - Are fast and efficient due to minimal packet inspection.
+   - Cannot make routing decisions based on application data.
+   - Are typically used when raw performance is the priority.
+   - If a client establishes a TCP connection through an L4 load balancer, that same server will handle all subsequent requests within that TCP session. This makes L4 load balancers particularly well-suited for protocols that require persistent connections, like WebSocket connections.
+2. Layer 7 Load Balancer
+   - Layer 7 load balancers operate at the application layer, understanding protocols like HTTP.
+   - They can examine the actual content of each request and make more intelligent routing decisions.
+   - Unlike Layer 4 load balancers, the connection-level details are not that relevant. Layer 7 load balancers receive an application-layer request (like an HTTP GET) and forward that request to the appropriate backend server.
+   - Terminate incoming connections and create new ones to backend servers.
+   - Can route based on request content (URL, headers, cookies, etc.).
+   - More CPU-intensive due to packet inspection.
+   - Provide more flexibility and features.
+   - Better suited for HTTP-based traffic.
