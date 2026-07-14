@@ -224,3 +224,17 @@ Load balancers can operate at different layers of the protocol stack and which y
    - More CPU-intensive due to packet inspection.
    - Provide more flexibility and features.
    - Better suited for HTTP-based traffic.
+
+### Health Checks
+
+Health checks are a way for the load balancer to determine if a server is healthy. They can be configured to check the server at different intervals and with different protocols. A common approach is to use a TCP health check, which is a simple and efficient way to check if a server is accepting new connections. A Layer 7 health check might make an HTTP request to the server and make sure the response is success (e.g. a 200 status code vs a 500 indicating internal failures or no response indicating a crash).
+
+### Load Balancing Algorithms
+
+1. Round Robin: Requests are distributed sequentially across servers
+2. Random: Requests are distributed randomly across servers
+3. Least Connections: Requests go to the server with the fewest active connections
+4. Least Response Time: Requests go to the server with the fastest response time
+5. IP Hash: Client IP determines which server receives the request (useful for session persistence)
+
+Round Robin or Random Algorithms are appropriate for stateless applications. For services that require a persistent connection (e.g. those serving SSE or WebSocket connections), using Least Connections is a good idea because it avoids a situation where a single server gradually accumulates all of of the active connections.
