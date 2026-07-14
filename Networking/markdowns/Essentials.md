@@ -161,3 +161,25 @@ Use this pattern in system design inteviews where you want clients to get notifi
 
 ### WebSockets: Real-Time Bidirectional Communication
 
+WebSockets provide a persistent, TCP-style connection between client and server, allowing for real-time, bidirectional communication with broad support (including browsers). Unlike HTTP's request-response model, WebSockets enable servers to push data to clients without being prompted by a new request. Similarly clients can push data back to the server without the same wait.
+
+WebSockets are initiated via an HTTP "upgrade" protocol, which allows an existing TCP connection to change L7 protocols. This is super convenient because it means you can utilize some of the existing HTTP session information (e.g. cookies, headers, etc.) to your advantage. 
+
+Here is how clients and servers establish WebSocket connections:
+
+1. Client initiates WebSocket handshake over HTTP (with a backing TCP connection)
+2. Connection upgrades to WebSocket protocol, WebSocket takes over the TCP connection
+3. Both client and server can send binary messages to each other over the connection
+4. The connection stays open until explicitly closed
+
+Once the connection has been established, you effectively have a channel where you can send binary packets to the server from the client and vice versa. 
+
+You suggest WebSockets when you need high-frequency, persistent, bi-directional communication between the server and the client. Some use cases are real-time applications and games where you need to exchange messages as soon as they happen.
+
+### WebRTC: Peer-to-Peer Communication
+
+WebRTC enables direct peer-to-peer communication between browsers without requiring an intermediary server for the data exchange. This works over UDP. From a networking perspective, establishing peer-to-peer connections is more difficult than client-server interactions because most clients don't allow inbound connections for security reasons.
+
+With WebRTC, clients talk to a central "signaling server" which keeps track of which peers are available together with their connection information. Once a client has the connection information for another peer, they can try to establish a direct connection without going through any intermediary servers.
+
+WebRTC is ideal for audio/video calling and conferencing applications. It can also occasionally be appropriate for collaborative applications like document editors, especially if they need to scale to many clients. In practice, most collaborative editors don't require scaling to thousands of clients. Additionally, you often need a central server anyways to store the document and coordinate between clients. 
