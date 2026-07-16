@@ -383,7 +383,17 @@ A load balancer is one piece of a larger edge story. At Staff level you're expec
 
 Opening a TCP (and TLS) connection is expensive — a handshake and at least one round trip before any useful work happens. **Connection pooling** keeps a set of established connections open and reuses them across requests, which is why HTTP keep-alive and database connection pools exist.
 
-A classic real-world scaling bug lurks here: **ephemeral port exhaustion**. Each outbound connection from a host consumes a source port from a finite range (~28k by default). A service that opens a fresh connection per request to a downstream — or an L4 load balancer fronting a busy backend — can run out of ports and start failing connections even though CPU and memory look fine. The fix is pooling and connection reuse. This is the kind of failure mode that distinguishes a senior answer from a staff one.
+A classic real-world scaling bug lurks here: **ephemeral port exhaustion**. It confuses people because it sounds like it should be about the port the *server* listens on — but it isn't. Every TCP connection is uniquely identified by a 4-tuple: `(source IP, source port, destination IP, destination port)`. The destination port is the well-known listening port (443, 5432, …) and is *fine* — a server happily accepts thousands of connections to port 443 because each is still unique via the other fields. The problem is the **source port**: when a host *initiates* an outbound connection, the OS assigns it a temporary port from the finite **ephemeral range** (~28k ports by default). It's the initiating side that runs out.
+
+```
+Client                                      Server
+10.0.0.5 : 49321  ───────────────▶  10.0.0.9 : 443
+         ▲                                   ▲
+   ephemeral source port            listening port
+   (finite pool — runs out)         (fixed — fine)
+```
+
+The trap springs when many connections all go to the **same destination** IP:port, because then the destination fields are constant and the source port is the *only* thing making each connection unique — so you burn one ephemeral port per concurrent connection. This is exactly the situation for a service that opens a fresh connection to the same downstream (a database, another microservice) on every request, or an **L4 load balancer / NAT gateway** fronting a small backend pool. `TIME_WAIT` makes it worse: the initiating side holds a closed connection's source port for ~60s before it can be reused, so churning short-lived connections can pin tens of thousands of ports even when few are actively in use. Connections start failing ("cannot assign requested address") even though CPU and memory look fine. The fix is pooling and connection reuse — keep a handful of long-lived connections open instead of opening one per request. This is the kind of failure mode that distinguishes a senior answer from a staff one.
 
 ### Forward vs Reverse Proxy
 
