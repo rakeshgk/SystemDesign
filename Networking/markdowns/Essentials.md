@@ -131,6 +131,13 @@ Key characteristics of QUIC include:
 3. **Faster handshakes**: TLS 1.3 is built directly into the protocol, so connection setup and encryption negotiate together in **1 RTT** (or **0-RTT** for resumed connections), versus TCP's separate TCP + TLS handshakes.
 4. **Connection migration**: Connections are identified by a connection ID rather than the 4-tuple of IPs and ports. A client can change networks (Wi-Fi to cellular, IP change behind NAT) and keep the same connection alive — a big deal for mobile.
 
+> **"Userspace" vs. "application layer" — a common point of confusion.** These are two different axes. *Userspace vs. kernel* is about **where the code runs**; *OSI layer* is about **what job the protocol does**. QUIC runs as userspace code but is **functionally a transport protocol** — it does TCP's job (ordered delivery, retransmission, congestion control). It is *not* the application-layer protocol doing this: HTTP/3 is a separate thing that runs *on top of* QUIC. To untangle the layering:
+> - **On the wire / to the OS**: the packets are plain **UDP** — that's the real L4 header routers, NATs, and firewalls see. QUIC borrows UDP as a thin delivery envelope and rebuilds the reliability machinery on top of it.
+> - **Functionally**: QUIC is the transport doing ordering + retransmission, sitting logically *between* HTTP/3 and UDP.
+> - **Where that code runs**: in the application's own process (a library), not the kernel.
+>
+> **Why build it this way?** TCP's logic lives in the OS kernel, so changing it means kernel upgrades across billions of devices — glacially slow. Because QUIC ships as a userspace library inside the app, the transport can be updated with a normal software release: Google could iterate QUIC by shipping it in **Chrome** and on their servers, without waiting for anyone's OS to update. And it rides UDP specifically because the internet's middleboxes already pass UDP — a brand-new L4 protocol number would just get dropped. (Userspace is where QUIC mostly lives today, but it's an implementation choice, not a rule — some systems now push QUIC into the kernel for performance.)
+
 Use QUIC/HTTP-3 when you want the latency and mobility benefits above, especially for user-facing web and mobile traffic on lossy networks. The main trade-offs are that UDP is sometimes throttled or blocked by middleboxes, and that userspace implementations can be more CPU-intensive than kernel TCP.
 
 ## Application Layer Protocol
