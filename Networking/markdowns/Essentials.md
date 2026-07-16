@@ -444,7 +444,21 @@ The quick heuristic: **NGINX** for a straightforward, stable reverse proxy / web
 
 A **Content Delivery Network** caches content at points of presence (PoPs) physically close to users, cutting latency and offloading origin servers. Static assets are the obvious case, but modern CDNs also cache API responses, terminate TLS at the edge, and run logic (edge functions) close to users.
 
-Users are steered to the nearest PoP via **GeoDNS** (return a location-appropriate IP) and **anycast** (many PoPs advertise the same IP via BGP, so the network routes each packet to the closest one). Anycast also absorbs traffic spikes and DDoS by spreading load across many locations. This ties directly back to the DNS section — the CDN is one of the biggest consumers of GeoDNS and low-TTL records.
+Users are steered to the nearest PoP via **GeoDNS** (return a location-appropriate IP) and **anycast**. This ties directly back to the DNS section — the CDN is one of the biggest consumers of GeoDNS and low-TTL records.
+
+**Anycast, concretely.** The idea that trips people up is: *how can dozens of servers around the world share the same IP address?* Normally one IP belongs to one machine (that's **unicast**). Anycast breaks that assumption on purpose. The CDN takes a single IP — say `203.0.113.10` — and stands up a PoP in London, one in New York, one in Tokyo, one in Frankfurt, each configured with *that same IP*. Then every PoP **advertises a route to `203.0.113.10` via BGP**, the protocol routers use to tell each other "traffic for this address block can reach it through me." The internet's routers now see many paths to the same destination and, as they always do, each router forwards a packet down the path that looks *closest to it* (fewest network hops / lowest cost). There is no central coordinator making this decision — it's just normal BGP route selection, applied to an IP that happens to live in many places at once.
+
+```
+                    DNS returns ONE IP: 203.0.113.10  (advertised from every PoP)
+
+  User in Paris ───▶ nearest BGP path ───▶ [ Frankfurt PoP ]   ← same IP
+  User in Boston ──▶ nearest BGP path ───▶ [ New York PoP  ]   ← same IP
+  User in Osaka ───▶ nearest BGP path ───▶ [ Tokyo PoP     ]   ← same IP
+```
+
+**Example.** A user in Paris does a DNS lookup for `cdn.example.com` and gets back `203.0.113.10` — the *same* answer everyone on earth gets, so DNS caching and low TTLs aren't even in play the way they are with GeoDNS. Their packets head for `203.0.113.10`, and because the Frankfurt PoP's BGP advertisement is the closest route from their ISP's vantage point, they land in Frankfurt — never even learning that New York and Tokyo answer to the same address. A user in Boston sending to the identical IP is steered to New York instead. The routing fabric itself does the geographic load balancing.
+
+**Why it matters (vs. GeoDNS):** anycast reacts at the speed of routing, not DNS. If the Frankfurt PoP goes down, its BGP advertisement is withdrawn and routers automatically re-converge onto the next-closest PoP within seconds — no waiting for DNS TTLs to expire on millions of clients. This also makes anycast a natural **DDoS absorber**: a volumetric flood aimed at `203.0.113.10` is split across *every* PoP advertising it, so the attack is diluted across the whole global footprint instead of hammering one box. In practice CDNs combine both — GeoDNS for coarse continent-level steering and picking which anycast IP to hand out, anycast for fast, routing-level failover and attack absorption.
 
 ### HTTP Caching
 
