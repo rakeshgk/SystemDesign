@@ -84,7 +84,7 @@ These relationships are enforced through foreign keys in SQL (e.g., `posts.user_
 The types you pick for your columns are part of the schema design, not an afterthought — the wrong choice causes correctness bugs that are painful to fix once data exists.
 
 - **Money:** never store as a float. Use an integer number of cents (or a fixed-precision `DECIMAL`/`NUMERIC`). Floating point rounding errors on currency are a classic production bug.
-- **Primary keys — UUID vs bigint:** auto-incrementing `bigint` keys are compact and index-friendly but leak volume and require a round-trip to the DB to generate. UUIDs (or ULIDs) can be generated client-side and don't leak counts, but they're larger and, if random (UUIDv4), hurt index locality on inserts. ULIDs / UUIDv7 are time-ordered and avoid that penalty — a good default when you need client-generated IDs.
+- **Primary keys — UUID vs bigint:** auto-incrementing `bigint` keys are compact and index-friendly but leak volume and growth rate when exposed externally. They also require a round-trip to the DB to generate. UUIDs (or ULIDs) can be generated client-side and don't leak counts, but they're larger and, if random (UUIDv4), hurt index locality on inserts. ULIDs / UUIDv7 are time-ordered and avoid that penalty — a good default when you need client-generated IDs.
 - **Timestamps:** store in UTC, use a timezone-aware type (`TIMESTAMPTZ` in Postgres), and keep display-timezone conversion in the application layer.
 - **Enums / status fields:** prefer a constrained set (a native enum, a `CHECK` constraint, or a lookup table) over free-form strings so invalid states can't be written.
 
