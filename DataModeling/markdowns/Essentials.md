@@ -32,7 +32,7 @@ Example Technologies: Redis, Memcached and DynamoDB
 
 ### Wide Column Databases
 
-Wide-column databases organize data into column families where rows can have different sets of columns. They're optimized for massive write-heavy workloads and time-series data.
+Wide-column databases organize data into column families where rows can have different sets of columns. They're optimized for massive write-heavy workloads and time-series data. Data in these tables is grouped by a partition key. For example - All data related to one user lives together. 
 
 Use Wide Column Databases over SQL when you have enormous write volumes, time-series data, or analytics workloads where you primarily append data and run aggregations. Think telemetry, event logging, or IoT sensor data.
 
