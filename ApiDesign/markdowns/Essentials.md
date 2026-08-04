@@ -137,7 +137,24 @@ The server stores the key alongside the result of the first successful request. 
 2. What happens if a retry arrives *while the first request is still in flight*? (You need a lock or a "request in progress" state to avoid a race, typically returning `409 Conflict` for the concurrent duplicate.)
 3. What scope does the key have? (Usually per-endpoint + per-user, so keys can't collide or leak across tenants.)
 
-This is the single most common staff-level API question. Stripe's API is the canonical reference implementation to cite.
+**The key must be stable across retries.** This is the whole game: the client generates the key *once, before the first attempt*, and reuses the *same* key for every retry of that logical operation. If the client mints a fresh UUID per retry, the mechanism is defeated — the server sees each attempt as a new operation and double-books. The key identifies the *intent* ("book this seat"), not the individual HTTP request.
+
+#### Client-generated vs. content-based keys
+
+There are two ways to produce the key, and they fail on opposite edges:
+
+- **Client-generated (random UUID)** — the client mints a random key per operation and must persist it across retries. Handles *intentionally identical* operations correctly (two separate clicks to buy two identical general-admission tickets get two keys, so both succeed), but relies on the client honoring the "reuse the same key on retry" contract.
+- **Content-based (deterministic hash)** — derive the key by hashing the canonicalized request, e.g. `sha256(canonical(payload) + user_id + endpoint)`. Retries dedupe automatically with nothing to persist, but two *legitimately identical* operations collapse into one false duplicate. Canonicalization (stable JSON key order, whitespace, encoding) is mandatory or identical requests hash differently. To support intentional duplicates you must fold in a discriminator (timestamp, sequence number, nonce) — which puts the "contribute something unique per intent" burden right back on the client.
+
+Neither removes the need for a **server-side business uniqueness constraint** (e.g. a unique index on `(event_id, seat_id)`) as the correctness backstop. The idempotency key optimizes the *clean retry path* and returns the original response; the constraint makes double-actions *impossible* regardless of client behavior, at the cost of an uglier `409` the client must interpret. A robust design uses both.
+
+This is the single most common staff-level API question. **Stripe's core REST API** (`api.stripe.com`, on all `POST` requests) is the canonical reference to cite. It's a hybrid worth describing:
+
+1. Client sends a `Idempotency-Key` header (Stripe recommends a V4 UUID) — client-generated and reused across retries.
+2. Stripe stores the first request's status code and response body and *replays it verbatim* on any retry, regardless of outcome.
+3. It *also* stores a fingerprint (hash) of the request parameters, and rejects a reuse of the same key with a *different* payload — content-based hashing used **defensively to detect misuse**, not to generate the key.
+4. A concurrent request with the same key while the first is in flight gets a `409 Conflict`.
+5. Keys expire after 24 hours.
 
 ### Error Handling as a Design Surface
 
