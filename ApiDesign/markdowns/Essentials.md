@@ -1,6 +1,6 @@
-# Api Design Essentials
+# API Design Essentials
 
-## Api Types 
+## API Types
 
 In an interview, you'll typically choose between three main API protocols:
 
@@ -39,7 +39,7 @@ HTTP provides a set of methods (verbs) that map naturally to common operations
 1. `GET` is for retrieving data without changing anything
 2. `POST` creates new resources. POST operations are not typically idempotent
 3. `PUT` replaces an entire resource with what you send, or create it if it doesn't exist. PUT is idempotent, so sending the same data multiple times results in the same final state.
-4. `PATCH` updates part of a resource. PATCH operations are usually not idempotent. For example - PATCH a user's email is idempotent while appending an entry to the end of the list is not. 
+4. `PATCH` updates part of a resource. Whether a PATCH is idempotent depends on the operation. For example - setting a user's email to a fixed value is idempotent (repeating it leaves the same final state), while appending an entry to the end of a list is not (each call adds another entry). 
 5. `DELETE` removes a resource. DELETE operations are usually idempotent even though the response codes differ
 
 ### Passing Data to APIs
@@ -57,14 +57,14 @@ An API Response is made up of two parts
 1. The status code, which indicates whether the request was successful or not.
 2. The response body, which contains the data you're returning to the client (typically JSON)
 
-For status codes, stick to the common ones: 200 for success, 201 for created resources, 400 for bad requests, 401 for authentication required, 404 for not found, and 500 for server errors.
+For status codes, stick to the common ones: 200 for success, 201 for created resources, 400 for bad requests, 401 for authentication required (the client isn't authenticated), 403 for forbidden (authenticated but not allowed), 404 for not found, and 500 for server errors.
 
 ## Common API Patterns
 
 Regardless of whether you choose REST, GraphQL, or RPC, there are some patterns that apply across all API types.
 
 1. Pagination - When you're dealing with large datasets, you can't return everything at once. Instead, you need pagination to break large result sets into manageable chunks. There are two main approaches to pagination: offset-based and cursor-based.
-- Offset-based pagination - Offset-based pagination is the simplest approach and used by most websites. You specify how many records to skip and how many to return: `/events?offset=20&limit=10` gets records 21-30. This is intuitive and easy to implement, but it has problems with large datasets. If someone adds a new event while you're paginating through results, you might see duplicates or miss records as the data shifts.
+- Offset-based pagination - Offset-based pagination is the simplest approach and is used by most websites. You specify how many records to skip and how many to return: `/events?offset=20&limit=10` gets records 21-30. This is intuitive and easy to implement, but it has problems with large datasets. If someone adds a new event while you're paginating through results, you might see duplicates or miss records as the data shifts.
 - Cursor-based pagination - Cursor-based pagination solves this by using a pointer to a specific record instead of counting from the beginning. The first request looks like this: `/events?limit=10`. The response to this request includes a pointer to the last record that was retrieved (For example - Something like `next_cursor`). You then use the cursor to skip over records that were previously retrieved to return a new set of records: `/events?cursor=cmd9atj3p000007ky19w1dpy2&limit=10`
 2. Versioning - APIs evolve over time, and you need a strategy for handling changes without breaking existing clients. This is particularly important for public APIs where you can't control when clients update their code.
 - URL Versioning - The most common approach is URL versioning, where you include the version number in the path: `/v1/events` or `/v2/events`. This is explicit and easy to understand.
@@ -76,11 +76,11 @@ Authentication verifies identity - proving the user is who they claim to be. Aut
 
 ### API Keys
 
-API keys are long, randomly generated strings that act like passwords for applications rather than humans. When a client makes a request, they include their API key in the Authorization header, and your server looks up that key to identify which application is making the request.
+API keys are long, randomly generated strings that act like passwords for applications rather than humans. When a client makes a request, it includes its API key in the Authorization header, and your server looks up that key to identify which application is making the request.
 
 ### JSON Web Tokens (JWT)
 
-JWT Tokens encode encode user information directly into the token itself rather than storing session state on your server. When a user logs in successfully, your server creates a JWT containing their user ID, permissions, and an expiration time, then signs the entire token with a secret key.
+JWTs encode user information directly into the token itself rather than storing session state on your server. When a user logs in successfully, your server creates a JWT containing their user ID, permissions, and an expiration time, then signs the entire token with a secret key.
 
 Conveniently, when that JWT comes back with future requests, you can verify it's authentic by checking the signature, and you can read the user information directly from the token without any database lookups. The token itself carries all the context you need to authorize the request.
 
@@ -115,3 +115,135 @@ Rate limiting prevents abuse by restricting how many requests a client can make 
 3. Endpoint-specific limits: 10 booking attempts per minute to prevent ticket scalping
 
 You typically implement rate limiting at the API gateway level or using middleware in your application. When limits are exceeded, return a `429 Too Many Requests` status code.
+
+## Staff-Level Depth
+
+The sections above cover the mechanics of API design. At a staff-level interview, the interviewer already assumes you know the mechanics. What distinguishes a staff answer is reasoning about *failure, evolution, and cost* — what happens when the network is unreliable, when clients retry, when the API has to change without breaking millions of existing integrations, and what each design choice costs you operationally. This section layers that depth onto the fundamentals above.
+
+### Idempotency Keys (Safe Retries for Non-Idempotent Operations)
+
+The idempotency table above tells you which HTTP methods are *naturally* idempotent. The staff-level follow-up is almost always: "A client calls `POST /events/{id}/bookings`, the network times out, and the client retries. How do you avoid double-booking?"
+
+The answer is an **idempotency key**. The client generates a unique key (typically a UUID) per logical operation and sends it in a header:
+
+```
+POST /events/123/bookings
+Idempotency-Key: 8f14e45f-ceea-467a-9575-27a3f3c9f2b1
+```
+
+The server stores the key alongside the result of the first successful request. On a retry with the same key, the server returns the *original* response instead of creating a second booking. Key design decisions the interviewer will probe:
+
+1. How long do you retain keys? (A TTL — usually 24-48h — balances storage against realistic retry windows.)
+2. What happens if a retry arrives *while the first request is still in flight*? (You need a lock or a "request in progress" state to avoid a race, typically returning `409 Conflict` for the concurrent duplicate.)
+3. What scope does the key have? (Usually per-endpoint + per-user, so keys can't collide or leak across tenants.)
+
+This is the single most common staff-level API question. Stripe's API is the canonical reference implementation to cite.
+
+### Error Handling as a Design Surface
+
+Status codes tell the client *what category* of thing happened. They are not enough on their own. A well-designed API returns a **structured, machine-readable error body** so clients can program against failures without string-matching:
+
+```json
+{
+  "error": {
+    "code": "SEAT_ALREADY_BOOKED",
+    "message": "Seat 14B is no longer available.",
+    "request_id": "req_9a8b7c6d",
+    "retryable": false
+  }
+}
+```
+
+- Use a stable, documented `code` enum — clients branch on this, never on the human-readable `message`.
+- Include a `request_id` so you (and the client) can correlate against your logs when they open a support ticket.
+- For transient failures (`429`, `503`), signal *when* to retry with a `Retry-After` header, and design clients to back off exponentially with jitter.
+- Distinguish client errors (`4xx`, don't retry — the request is wrong) from server errors (`5xx`, safe to retry).
+- For partial failures in batch operations, decide explicitly: all-or-nothing, or per-item status (see Bulk/Async below).
+
+### API Evolution and Backward Compatibility
+
+Versioning (covered above) is what you do when you've *failed* to evolve compatibly. The staff-level instinct is to avoid a new version for as long as possible, because every version you support is a maintenance and testing burden forever.
+
+The techniques that let you evolve without versioning:
+
+1. **Additive-only changes** — adding a new optional field or a new endpoint never breaks an existing client. Removing or renaming a field does.
+2. **Tolerant reader / robustness principle** — clients ignore fields they don't recognize, so servers can add fields freely.
+3. **Never change the meaning or type of an existing field** — that's a breaking change even if the field name is unchanged.
+4. **Deprecation policy** — when you must break, you announce it, expose a `Deprecation` / `Sunset` header, run old and new in parallel through a migration window, and monitor which clients still call the old path.
+
+When you *do* version, prefer a small number of major versions and treat a new major version as an expensive, rare event — not a routine release.
+
+### Concurrency and Consistency Control
+
+Your Ticketmaster example has an obvious hazard: two users try to book the same seat simultaneously. Idempotency keys protect against *retries of the same request*; they do nothing about *two different clients racing*. For that you need concurrency control.
+
+**Optimistic concurrency with ETags** is the REST-native approach. The server returns a version identifier on read:
+
+```
+GET /bookings/456
+→ 200 OK
+  ETag: "v7"
+```
+
+The client echoes it back on write with `If-Match`:
+
+```
+PUT /bookings/456
+If-Match: "v7"
+```
+
+If the resource has changed since (someone else wrote `v8`), the server rejects with `412 Precondition Failed` and the client re-reads and retries. This turns a silent lost-update into an explicit, handleable conflict. Also be ready to discuss **read-after-write consistency** expectations — if your write path is asynchronous or replicated, a client that reads immediately after writing may not see its own change, and the API contract should make that explicit.
+
+### Bulk, Batch, and Long-Running (Async) Operations
+
+Chatty APIs that force clients into N round-trips are a scaling problem. Two patterns come up:
+
+1. **Bulk / batch endpoints** — accept many items in one request (e.g. `POST /events/{id}/bookings:batch`). The key design question is *partial failure semantics*: does the whole batch succeed or fail atomically, or does each item get an independent status? Return a per-item result array with individual status codes when atomicity isn't required.
+2. **Long-running operations** — when work can't complete within a request timeout (generating a report, processing a large upload), don't block. Return `202 Accepted` with a handle to a status resource:
+
+```
+POST /reports
+→ 202 Accepted
+  Location: /reports/789/status
+
+GET /reports/789/status
+→ 200 OK  { "status": "processing" }  ... eventually  { "status": "done", "result_url": "..." }
+```
+
+The client polls the status resource, or you push completion via a **webhook** so the client isn't polling at all. Webhooks introduce their own design surface — delivery retries, signing payloads so the receiver can verify authenticity, and idempotency on the receiver's side because you'll deliver at-least-once.
+
+### Protocol Trade-offs (Beyond "When to Pick Each")
+
+The API Types section says *when* to reach for each protocol. A staff answer also weighs what each one *costs*:
+
+1. **GraphQL** — flexible fetching is real, but it moves query-planning cost to the server. Watch for the **N+1 problem** (a nested query fanning out into hundreds of DB calls — mitigated with batching/DataLoader), **caching difficulty** (a single POST endpoint defeats HTTP caching and CDNs), and **query cost / depth limits** to stop a client from issuing a pathologically expensive query. It shines for client-driven, heterogeneous UIs; it's overkill for simple CRUD.
+2. **gRPC** — excellent for high-throughput internal service-to-service calls (binary Protobuf, HTTP/2 multiplexing, streaming, strong typed contracts). Costs: **limited browser support** (needs a proxy like gRPC-Web), **weaker human observability** (binary payloads aren't curl-friendly), and you own **schema evolution** discipline via Protobuf field numbering. Rarely the right choice for a public-facing API.
+3. **REST** — the safe default precisely because it's cacheable, debuggable, and universally understood. Its cost is over-fetching/under-fetching and chattiness, which is exactly what GraphQL and bulk endpoints exist to address.
+
+### Auth Depth: Token Lifecycle and Authorization Placement
+
+The JWT section covers the happy path. The trade-off the interviewer probes is that JWTs are **hard to revoke** — the whole point is that you *don't* hit a database to validate them, which means a compromised or logged-out token stays valid until it expires. Staff-level mitigations:
+
+1. **Short-lived access tokens + long-lived refresh tokens** — access tokens expire in minutes, so the revocation window is small; refresh tokens (which *are* checked against server state) mint new access tokens and can be revoked centrally.
+2. **A revocation/denylist** for the "must kill this session now" case — a small amount of state that reintroduces a lookup, accepted as the cost of revocability.
+3. **Key rotation** — sign with rotating keys (via a `kid` header and a published JWKS) so a leaked signing key doesn't compromise you forever. Never accept `alg: none`.
+
+On **authorization placement**: coarse checks (is this token valid, is this user rate-limited) belong at the gateway; fine-grained checks (does *this* user own *this* booking) must happen at the service that owns the data, because only it has the context. Beyond RBAC, be ready to mention **scopes** (OAuth-style, "this token may only read events") and **ABAC** (attribute-based — decisions from user/resource/environment attributes) for cases where roles are too coarse.
+
+### Rate Limiting: Algorithms and Placement
+
+The Security section covers *why* and *what code* to return. The staff-level detail is *how* the limiter counts:
+
+1. **Token bucket** — tokens refill at a steady rate; each request spends one. Allows short bursts up to the bucket size while bounding the sustained rate. Most common general-purpose choice.
+2. **Fixed window** — simple counter per time window, but suffers a boundary problem: a client can send a full window's worth of requests at the end of one window and the start of the next, briefly doubling the intended rate.
+3. **Sliding window** — smooths the boundary problem at the cost of more state/computation.
+
+In a distributed system the limiter's counters must be *shared* across your fleet (e.g. in Redis), or each node enforces its own limit and the effective limit is N× what you intended. This "where does the counter live" point is what separates a staff answer from a bootcamp answer.
+
+### Caching (HTTP-Native)
+
+Worth a mention because it's cheap leverage and often forgotten. `Cache-Control` directives (`max-age`, `no-store`, `private` vs `public`) and `ETag` / `If-None-Match` conditional requests let clients and CDNs avoid redundant work — a `304 Not Modified` costs almost nothing. This is a first-class reason REST's uniform interface is valuable and a reason to think twice before a single-endpoint GraphQL design for read-heavy public data.
+
+### HATEOAS (Know It, Usually Dismiss It)
+
+REST purists advocate **HATEOAS** — responses embed links to the next available actions so clients discover the API dynamically rather than hardcoding URLs. In practice almost no one implements it fully; it adds complexity that most clients don't exploit. Worth one sentence in an interview to show you know the full REST maturity model (Richardson Maturity Model) and can make a deliberate, justified decision to *not* use it.
