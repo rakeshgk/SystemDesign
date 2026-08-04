@@ -209,7 +209,17 @@ PUT /bookings/456
 If-Match: "v7"
 ```
 
-If the resource has changed since (someone else wrote `v8`), the server rejects with `412 Precondition Failed` and the client re-reads and retries. This turns a silent lost-update into an explicit, handleable conflict. Also be ready to discuss **read-after-write consistency** expectations — if your write path is asynchronous or replicated, a client that reads immediately after writing may not see its own change, and the API contract should make that explicit.
+If the resource has changed since (someone else wrote `v8`), the server rejects with `412 Precondition Failed` and the client re-reads and retries. This turns a silent lost-update into an explicit, handleable conflict.
+
+#### Read-After-Write Consistency
+
+A related hazard: if your write path is replicated, a client that reads immediately after writing may not see its own change. The write went to the **primary/leader**, but reads are often served by **replicas** that lag behind by some replication delay — so the client reads a replica that hasn't applied its own write yet and sees stale data.
+
+Note the common misconception: the problem is *not* solved by pinning reads to the app server that handled the write. That server is stateless — it just forwarded the write to the datastore. The read needs a *copy of the data* that has caught up to the write, which is a datastore concern, not an app-tier one. Three standard approaches, in increasing sophistication:
+
+1. **Read from the leader** — for a short window after a write, route the read to the primary instead of a replica. Simplest and always correct, but it spends scarce primary capacity on reads, defeating the purpose of having replicas. Fine for occasional "did my change take?" reads; bad as a blanket policy.
+2. **Sticky routing to a replica** — pin a user's reads to one specific replica so their view is self-consistent. This gives **monotonic reads** (you never go backwards in time) but *not* guaranteed read-your-writes — if the write went to the leader and that replica still lags, you can still miss your own write.
+3. **Version tokens / write fences** — the write returns a position token (a log sequence number like Postgres's LSN, a MySQL GTID, or a write timestamp). The client carries it on subsequent reads; the read path serves from a replica only if that replica has applied up to the token, otherwise it waits briefly or falls through to the leader. This keeps reads distributable across replicas while making correctness per-request rather than a blunt "everyone hits the leader." Some managed stores expose this directly — DynamoDB's `ConsistentRead=true`, Spanner's externally-consistent reads.
 
 ### Bulk, Batch, and Long-Running (Async) Operations
 
