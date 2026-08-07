@@ -47,7 +47,7 @@ The main advantage of range-based sharding is simplicity and support for efficie
 
 Hash sharding uses a hash function to evenly distribute records across shards. Instead of assigning ranges, you take a shard key like `user_id`, hash it, and use the result to pick a shard. This is the default and the most common sharding strategy to use in System Design Interviews. 
 
-The big advantage of hash-based sharding is even distribution. Since the hash function scrambles the input values, new users get distributed evenly across all shards.
+The big advantage of hash-based sharding is that it removes skew from the shape of your key values — sequential or clustered keys get scattered evenly across shards. The caveat: this gives you even distribution of *keys*, not necessarily even *load*. A high-cardinality key with no hot values (like `user_id`) distributes well; a low-cardinality or hot key still lands lopsided, since all rows for a given key value hash to the same shard.
 
 The flip side of that scrambling is that you lose all locality. Keys that were adjacent in value (user IDs 500K–600K, or a time range of orders) land on different shards, so range scans and ordered reads that were cheap under range-based sharding now become scatter-gather queries across every shard. Hash sharding also makes the "query by a non-shard-key field" problem worse, since there's no ordering to exploit. Pick hash when your access pattern is point lookups by the shard key; pick range when you genuinely need range scans.
 
