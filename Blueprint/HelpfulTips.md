@@ -10,7 +10,13 @@
 ## Non-Functional Requirements
 
 1. Non-functional requirements refer to specifications about how a system operates, rather than what tasks it performs.
-2. These requirements are critical as they define system attributes like scalability, latency, security, and availability, and are often framed as specific benchmarks such as the system ability to handle 100 Million DAU or respond to queries within 200 ms. 
+2. These requirements are critical as they define system attributes like scalability, latency, security, and availability, and are often framed as specific benchmarks such as the system ability to handle 100 Million DAU or respond to queries within 200 ms.
+3. Core Categories of Non Functional Requirements
+- Performance & Latency : Focuses on response time, processing speed, and throughput.
+- Scalability : Measures how effectively the system handles growth in user volume, data storage, or network traffic.
+- Availability & Reliability : Dictates system uptime, fault tolerance, and recovery protocols
+- Security & Compliance : Sets standards for data protection, access control, authentication, and regulatory adherence.
+- Maintainability & Observability : Defines how easily engineers can monitor, debug, update, and deploy code to the system.
 
 # The Set Up
 
