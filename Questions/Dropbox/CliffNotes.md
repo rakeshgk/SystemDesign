@@ -31,7 +31,6 @@ Generate a pre-signed URL that permits only PUT operation for that exact key
 Return this to the client
 ```
 
-Chunking
 Chunking can help us handle large files efficiently by splitting them into small manageable pieces. S3 multipart upload splits one object into numbered parts, uploads those parts independently, and then asks S3 to assemble them into the final object. The client performs chunking and uploads the parts. S3 is only responsible for assembling the parts. 
 
 1. The backend app server is going to talk to S3 through the SDK to initiate a new multi part file upload by calling `CreateMultipartUpload`
