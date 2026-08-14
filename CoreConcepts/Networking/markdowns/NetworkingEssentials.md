@@ -4,7 +4,7 @@
 
 The Open Systems Interconnection (OSI) model is a conceptual framework created by the ISO that standardizes network communication into seven distinct layers. While the full networking stack is fascinating, there are three key layers that come up most often in system design interviews.
 
-![OSI Layers](../assets/OSI-Layers.png)
+![OSI Layers](../assets/OSILayers.png)
 
 1. **Application Layer** - Deals with application protocols like DNS, HTTP, Websockets, WebRTC. These are common protocols that build on top of TCP  (or UDP, in the case of WebRTC) to provide a layer of abstraction for different types of data typically associated with web applications.
 2. **Transport Layer** - Deals with end-to-end communication protocols like TCP, QUIC or UDP. This layer provides reliability, ordering and flow control.
